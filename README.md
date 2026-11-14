@@ -1,8 +1,12 @@
+﻿# Cloud Deployment & CI/CD — Bus Booking Platform
+
+A backend API for bus trips and seat reservations, with containerization, CI validation, and GHCR image publishing.
+
+**Role:** DevOps & Cloud Engineering<br>
+**Organization:** ALGIONS AI LABS PRIVATE LIMITED<br>
+**Repository:** https://github.com/uday2327/AlgionsAI-Bus-tracking-route-devops-project
 
 
-# Bus Trip and Seat Reservation API
-
-A small backend service for trip search, seat availability and reservations. This is the assigned bus service, not a passenger-facing booking website. It demonstrates repeatable containers, CI checks, health reporting, backups and rollback.
 
 ## Business problem and scope
 
@@ -228,10 +232,10 @@ sudo docker run hello-world
 git --version
 ```
 
-Clone the GitHub repository and configure its local environment. Replace `OWNER/REPO` with the repository created for this submission. Keep the generated passwords URL-safe; hexadecimal values from `openssl rand -hex 24` are suitable for the Prisma connection string.
+Clone the GitHub repository and configure its local environment. Use the repository URL shown at the top of this README. Keep the generated passwords URL-safe; hexadecimal values from `openssl rand -hex 24` are suitable for the Prisma connection string.
 
 ```sh
-git clone https://github.com/OWNER/REPO.git bus-booking-platform
+git clone https://github.com/uday2327/AlgionsAI-Bus-tracking-route-devops-project.git bus-booking-platform
 cd bus-booking-platform
 cp .env.example .env
 nano .env
@@ -287,7 +291,7 @@ The test container migrates that test database and runs Jest/Supertest inside an
 
 `.github/workflows/ci-cd.yml` runs on pull requests, pushes to `main`, and version tags. It installs locked dependencies, runs ESLint and PostgreSQL-backed Jest tests, audits dependencies, builds a commit-tagged Docker image and reports Trivy findings for high and critical image vulnerabilities. The image scan is informational; the production `npm audit` gate blocks on high-severity production dependency advisories. After validation, main/tag pushes publish SHA and release tags to GHCR using `GITHUB_TOKEN`. CI does not deploy. GitHub repository policy must allow Actions to write packages. A publish is confirmed only by a successful workflow and visible GHCR package.
 
-For submission evidence, capture the green Actions run (including test summary), copy the published image's full commit tag and digest from the GHCR package page or `docker buildx imagetools inspect ghcr.io/OWNER/REPO:sha-COMMIT`, and include those with the repository URL. A local build is not evidence of a GHCR publish.
+For submission evidence, capture the green Actions run (including test summary), copy the published image's full commit tag and digest from the GHCR package page or `docker buildx imagetools inspect ghcr.io/uday2327/algionsai-bus-tracking-route-devops-project:sha-c7a042d6ce277d38e4dc1e85f132cabe8040727f`, and include those with the repository URL. A local build is not evidence of a GHCR publish.
 
 ### Successful GitHub Actions run
 
@@ -346,12 +350,83 @@ Restore replaces database objects/data. Create a separate backup first. The scri
 
 ## Rollback
 
-Keep immutable GHCR tags from successful commits. Set `API_IMAGE` in `.env` to the previous known-good `ghcr.io/OWNER/REPO:sha-...` tag, then run `docker compose pull api` followed by `docker compose up -d --no-build api`. Verify health and logs. The persistent database volume remains. Roll back schema changes separately with a compatible migration or planned restore.
+Rollback requires an older, known-good immutable GHCR image tag that is visible in the package registry. The verified tag from the successful run is sha-c7a042d6ce277d38e4dc1e85f132cabe8040727f; it is not an older rollback target if that is the version currently running. No older tag has been verified in this audit.
 
+Set API_IMAGE in .env to a previously verified older SHA tag, then pull and recreate the API. Replace the sample suffix only after confirming the tag exists in GHCR.
+
+~~~text
+API_IMAGE=ghcr.io/uday2327/algionsai-bus-tracking-route-devops-project:sha-REPLACE_WITH_VERIFIED_OLDER_SHA
+~~~
+
+~~~powershell
+docker compose pull api
+docker compose up -d --no-build api
+docker compose ps
+Invoke-RestMethod http://localhost:3000/health
+Invoke-RestMethod http://localhost:3000/ready
+~~~
+
+This changes the API image only; it does not reverse database migrations. Confirm schema compatibility and verify health, readiness and logs. Rollback is documented but not demonstrated.
 ## Demo and evidence plan
 
-In a 3–5 minute demo: (1) show the architecture and passing CI run, (2) call `/health`, `/ready`, routes/trips/seats, (3) reserve a seat twice and show one 201 plus one 409, then cancel and show it available, (4) stop PostgreSQL and show `/ready` fail before restart/recovery, and (5) show backup/restore output and the previous image tag rollback command. Capture the test output, container health/logs, backup/restore route count, and GHCR tag/digest. Record only after a successful push and pipeline run.
+In a 3-5 minute demo: (1) explain the architecture, (2) show the successful Actions run, (3) after local startup is verified, call health/readiness, (4) create a booking, show the duplicate 409, cancel and confirm release, and (5) show logs. Show restore or rollback only after the procedure has been successfully verified; otherwise disclose that the evidence is pending.
 
 ## Security and limitations
 
-API and database container ports are not publicly bound; PostgreSQL is only on the Compose network. The API image omits development and optional dependencies. The 2026-11-14 production dependency audit (`npm audit --omit=dev --omit=optional`) found zero vulnerabilities. A compatible, non-forced audit update moved ESLint to 10.15.0 and its `minimatch` dependencies to 11.0.8, clearing the three moderate findings. The remaining full development audit reports 3 high and 6 low package findings. The high findings share the Prisma CLI 6.19.3 → `@prisma/config` → vulnerable `deepmerge-ts` chain; npm's available fix requires the breaking Prisma 7.10.1 upgrade. Jest 29.7.0's dependency tree also includes vulnerable `deepmerge` 4.3.1; npm only offers a breaking Jest downgrade to 25.1.0, so that change was not applied. CI runs the full audit on a best-effort basis while the production audit remains a gate. These findings are in development tooling, which is excluded from the production image. Local TLS is self-signed, and example passwords must be changed before deployment. No authentication, payment integration, seat pricing, partial-route allocations, production secret manager, remote cloud host or public trusted certificate is included. Seeded dates are relative to the day the seed runs.
+API and database container ports are not publicly bound; PostgreSQL is only on the Compose network. The API image omits development and optional dependencies. The 2026-11-14 production dependency audit (`npm audit --omit=dev --omit=optional`) found zero vulnerabilities. A compatible, non-forced audit update moved ESLint to 10.15.0 and its `minimatch` dependencies to 11.0.8, clearing the three moderate findings. The remaining full development audit reports 3 high and 6 low package findings. The high findings involve the Prisma CLI and @prisma/config dependency chain, including vulnerable deepmerge-ts; npm's available fix requires the breaking Prisma 7.10.1 upgrade. Jest 29.7.0's dependency tree also includes vulnerable `deepmerge` 4.3.1; npm only offers a breaking Jest downgrade to 25.1.0, so that change was not applied. CI runs the full audit on a best-effort basis while the production audit remains a gate. These findings are in development tooling, which is excluded from the production image. Local TLS is self-signed, and example passwords must be changed before deployment. No authentication, payment integration, seat pricing, partial-route allocations, production secret manager, remote cloud host or public trusted certificate is included. Seeded dates are relative to the day the seed runs.
+
+
+## Assessment rubric mapping
+
+The assessment categories total 100 marks. This table maps repository work to the rubric; it does not award marks or guarantee a score.
+
+| Category | Marks | Evidence in this project | Reviewer verification |
+|---|---:|---|---|
+| Containerization and reproducibility | 20 | Dockerfile, docker-compose.yml, .dockerignore, .env.example | Inspect the files and run docker compose config and a clean local startup |
+| CI/CD automation | 20 | .github/workflows/ci-cd.yml | Inspect the successful validation and publish run linked below |
+| Deployment, networking and security | 15 | Compose private network, loopback API binding, optional Nginx, non-root runtime | Inspect config; local proxy and public deployment are not verified |
+| Observability and troubleshooting | 15 | /health, /ready, JSON logs and service health checks | Run the endpoints and inspect local logs; failure exercise remains |
+| Backup, restore and rollback | 15 | scripts/backup.js, scripts/restore.js, GHCR SHA tags | A backup was generated; restore and rollback have not been demonstrated |
+| Reliability and documentation | 10 | Booking transactions, integration suite, README, ARCHITECTURE.md, RUNBOOK.md | Inspect implementation and successful CI validation |
+| Domain API correctness | 5 | API controllers, booking service, Prisma schema and tests | CI test suite covers validation, cancellation, duplicate and concurrent booking |
+
+## Acceptance criteria status
+
+| Acceptance criterion | Status | Evidence or remaining check |
+|---|---|---|
+| Conflicting seat bookings fail safely | VERIFIED in GitHub CI | Duplicate and concurrent request tests passed in the successful validation run |
+| Clean environment build and startup | NOT VERIFIED locally | CI built the image; local Compose startup was blocked by unavailable Docker engine |
+| CI checks and versioned image | VERIFIED in GitHub | Validation and publish jobs succeeded; SHA image tag recorded below |
+| Health, logs, failure detection and recovery | NOT VERIFIED locally | Code and Compose checks exist; local operational exercise remains |
+| Backup restore or rollback evidence | NOT VERIFIED | Local backup artifact was generated; restore and rollback remain untested |
+
+## Verified project evidence and remaining evidence
+
+| Item | Current evidence |
+|---|---|
+| Repository | https://github.com/uday2327/AlgionsAI-Bus-tracking-route-devops-project |
+| Successful GitHub Actions run | https://github.com/uday2327/AlgionsAI-Bus-tracking-route-devops-project/actions/runs/43605440309 |
+| Successful run | Validate and publish jobs; commit c7a042d |
+| GHCR image | ghcr.io/uday2327/algionsai-bus-tracking-route-devops-project |
+| Published tags | latest and sha-c7a042d6ce277d38e4dc1e85f132cabe8040727f |
+| Reported image digest | sha256:1fc477a58c02ed32e079d50a0e7f5c6b6fe8ab5219939b327be7e7a430d2d4f0 |
+| Local deployment and endpoint screenshots | Not collected |
+| Application logs and failure recovery evidence | Not collected locally |
+| Backup artifact | Generated locally; integrity and restoration not verified |
+| Restore and rollback evidence | Not available |
+| Duplicate booking evidence | Covered by passing CI tests |
+| Architecture/runbook documents | ARCHITECTURE.md and RUNBOOK.md |
+| Demo video | Not recorded |
+
+The supplied image above is a screenshot of the successful GitHub Actions run. The Actions link is the primary source for the pipeline record. A successful CI run does not prove local deployment, public availability, restore success, or rollback success.
+
+## Remaining operator verification
+
+1. Start Docker Desktop and confirm docker info works.
+2. Copy .env.example to .env if needed, replace both example passwords, and keep the file private.
+3. Run Compose startup, health/readiness checks, and the isolated integration suite.
+4. Create and validate a fresh backup, then perform a planned restore test after preserving the current data.
+5. Verify an older known-good image tag exists before attempting rollback.
+6. Capture deployment, health, logs, backup/restore, and rollback evidence only after each succeeds; record the 3–5 minute demo.
+
+See [RUNBOOK.md](RUNBOOK.md) for commands and expected results. Do not run docker compose down -v as an ordinary stop; it deletes the database volume.
