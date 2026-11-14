@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SeatStatus {
+  AVAILABLE
+  BOOKED
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+model Route {
+  id           Int    @id @default(autoincrement())
+  source       String
+  destination  String
+  boardingStop String
+  dropStop     String
+  trips        Trip[]
+
+  @@unique([source, destination])
+}
+
+model Trip {
+  id            Int       @id @default(autoincrement())
+  routeId       Int
+  busName       String
+  travelDate    DateTime  @db.Date
+  departureTime String
+  route         Route     @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  seats         Seat[]
+  bookings      Booking[]
+
+  @@index([routeId, travelDate])
+  @@unique([routeId, travelDate, busName])
+}
+
+model Seat {
+  id          Int         @id @default(autoincrement())
+  tripId      Int
+  seatNumber  String
+  status      SeatStatus  @default(AVAILABLE)
+  trip        Trip        @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  bookings    Booking[]
+
+  @@unique([tripId, seatNumber])
+  @@index([tripId, status])
+}
+
+model Booking {
+  id             Int           @id @default(autoincrement())
+  pnr            String        @unique
+  tripId         Int
+  seatId         Int
+  passengerName  String
+  passengerPhone String
+  boardingStop   String
+  dropStop       String
+  status         BookingStatus @default(CONFIRMED)
+  createdAt      DateTime      @default(now())
+  trip           Trip          @relation(fields: [tripId], references: [id], onDelete: Restrict)
+  seat           Seat          @relation(fields: [seatId], references: [id], onDelete: Restrict)
+
+  @@index([tripId, status])
+}

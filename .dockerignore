@@ -1,0 +1,12 @@
+node_modules
+npm-debug.log*
+.env*
+!.env.example
+.git
+.github
+coverage
+backups
+nginx/ssl
+README.md
+ARCHITECTURE.md
+RUNBOOK.md

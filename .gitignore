@@ -1,0 +1,40 @@
+node_modules/
+.env*
+!.env.example
+coverage/
+npm-debug.log*
+*.log
+nginx/ssl/*
+!nginx/ssl/.gitkeep
+backups/*
+!backups/.gitkeep
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Build and test output
+dist/
+coverage/
+*.log
+
+# Database backups
+backups/*
+!backups/.gitkeep
+*.dump
+*.backup
+*.sql.gz
+
+# SSL private keys and certificates
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Operating system
+.DS_Store
+Thumbs.db

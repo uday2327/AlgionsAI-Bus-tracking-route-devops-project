@@ -1,0 +1,89 @@
+name: CI and container release
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.16-alpine
+        env:
+          POSTGRES_DB: bus_booking_test
+          POSTGRES_USER: bus_app
+          POSTGRES_PASSWORD: test_only_password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U bus_app -d bus_booking_test"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run lint
+      - run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://bus_app:test_only_password@localhost:5432/bus_booking_test?schema=public
+      - run: npm test
+        env:
+          TEST_DATABASE_URL: postgresql://bus_app:test_only_password@localhost:5432/bus_booking_test?schema=public
+          DATABASE_URL: postgresql://bus_app:test_only_password@localhost:5432/bus_booking_test?schema=public
+      - run: npm audit --omit=dev --omit=optional --audit-level=high
+      - run: npm audit --audit-level=high
+        continue-on-error: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: bus-booking-api:${{ github.sha }}
+      - name: Scan container image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: bus-booking-api:${{ github.sha }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '0'
+
+  publish:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,format=long
+            type=ref,event=tag
+            type=raw,value=latest,enable={{is_default_branch}}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
