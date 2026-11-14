@@ -16,8 +16,7 @@ COPY jest.config.js eslint.config.js ./
 CMD ["sh", "-c", "npx prisma migrate deploy && npm test"]
 
 FROM dependencies AS production-dependencies
-RUN npm prune --omit=dev --omit=optional \
-  && npm install --no-save --package-lock=false --omit=dev --omit=optional prisma@6.19.3
+RUN npm prune --omit=dev --omit=optional
 
 FROM base AS runtime
 ENV NODE_ENV=production
