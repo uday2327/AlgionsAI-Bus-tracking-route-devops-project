@@ -1,3 +1,5 @@
+
+
 # Bus Trip and Seat Reservation API
 
 A small backend service for trip search, seat availability and reservations. This is the assigned bus service, not a passenger-facing booking website. It demonstrates repeatable containers, CI checks, health reporting, backups and rollback.
@@ -10,9 +12,88 @@ Bus operators need a reliable way to publish trips and seats and reserve seats w
 
 Node.js 22, Express 5, PostgreSQL 16, Prisma 6, Jest, Supertest, Docker Compose, GitHub Actions and Nginx. No Kubernetes, Terraform or paid cloud service is required.
 
-## Architecture
+## System Architecture
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the diagram and concurrency design. [RUNBOOK.md](RUNBOOK.md) covers deployment and operational actions.
+The Bus Booking Platform uses Node.js, Express, PostgreSQL, Prisma ORM, Docker Compose, Nginx and GitHub Actions. Its main components are the backend API, database, optional reverse proxy, and CI/CD workflow. Docker Compose coordinates the API, database, migration job and isolated test service. PostgreSQL data is stored in a named volume so it survives ordinary container restarts.
+
+### 1. Application Architecture
+
+Requests can reach the API through Nginx or, for local checks, through the loopback-bound API port. Express handles the request and Prisma Client, running inside the API process, communicates with PostgreSQL. The migration job must complete successfully before Compose starts the API; the test service connects to the dedicated test database.
+
+```mermaid
+flowchart TB
+    USER["User / reviewer"] --> CLIENT["Postman / API client"]
+
+    subgraph COMPOSE["Docker Compose environment"]
+        subgraph NETWORK["Private Compose network"]
+            NGINX["Nginx reverse proxy<br/>HTTP 80 / HTTPS 443"]
+            API["Node.js + Express API<br/>container port 3000"]
+            PRISMA["Prisma Client<br/>inside the API process"]
+            DB[("PostgreSQL 16")]
+            VOL[("Persistent volume<br/>postgres_data")]
+            MIGRATE["Prisma migration job"]
+            TEST["Jest + Supertest test service"]
+
+            API --> PRISMA --> DB
+            DB --- VOL
+            MIGRATE --> DB
+            TEST --> DB
+        end
+    end
+
+    CLIENT -->|"HTTP / HTTPS"| NGINX
+    NGINX --> API
+    CLIENT -->|"Local access via 127.0.0.1:3000"| API
+    MIGRATE -. "must complete successfully before API starts" .-> API
+```
+
+### 2. CI/CD Architecture
+
+GitHub Actions validates pull requests and pushes to `main` or version tags. Validation installs dependencies, generates Prisma Client, runs ESLint, applies migrations to PostgreSQL, runs integration tests, audits dependencies, builds the Docker image and runs Trivy. After successful validation, pushes to `main` and version tags publish the image to GHCR. The full development-dependency audit and Trivy scan are configured as non-blocking checks; see the security notes below for the current audit findings.
+
+```mermaid
+flowchart TB
+    DEV["Developer"] --> REPO["GitHub repository"]
+    REPO --> INSTALL
+
+    subgraph CI["GitHub Actions validation"]
+        INSTALL["Install dependencies"] --> GENERATE["Prisma generate"]
+        GENERATE --> LINT["ESLint"]
+        LINT --> MIGRATE["Database migrations"]
+        MIGRATE --> TESTS["Jest integration tests"]
+        TESTS --> AUDIT["Dependency audits"]
+        AUDIT --> BUILD["Docker build"]
+        BUILD --> SCAN["Trivy scan"]
+    end
+
+    subgraph CD["Image release on main / version tag pushes"]
+        PUBLISH["Publish image"] --> GHCR[("GitHub Container Registry")]
+        GHCR --> DIGEST["Image tags and digest"]
+    end
+
+    SCAN -->|"successful validation on an eligible push"| PUBLISH
+```
+
+### 3. Database Architecture
+
+The database has four primary entities:
+
+- **Route:** source, destination and valid boarding/drop stops.
+- **Trip:** bus name, route, travel date and departure time.
+- **Seat:** trip seat number and availability status.
+- **Booking:** passenger details, unique PNR and booking status.
+
+```mermaid
+erDiagram
+    ROUTE ||--o{ TRIP : serves
+    TRIP ||--o{ SEAT : contains
+    TRIP ||--o{ BOOKING : records
+    SEAT ||--o{ BOOKING : reserved_in
+```
+
+### 4. Booking Reliability
+
+Booking claims an available seat with a conditional update inside a PostgreSQL transaction. Only the request that claims the seat can create a confirmed booking and receive a PNR; a conflict returns HTTP 409. Cancellation changes the booking status and releases the seat in the same transaction. See [ARCHITECTURE.md](ARCHITECTURE.md) for more data and concurrency details, and [RUNBOOK.md](RUNBOOK.md) for deployment and operational actions.
 
 ```text
 src/{config,controllers,middleware,routes,services,utils}/  API implementation
@@ -208,6 +289,12 @@ The test container migrates that test database and runs Jest/Supertest inside an
 
 For submission evidence, capture the green Actions run (including test summary), copy the published image's full commit tag and digest from the GHCR package page or `docker buildx imagetools inspect ghcr.io/OWNER/REPO:sha-COMMIT`, and include those with the repository URL. A local build is not evidence of a GHCR publish.
 
+### Successful GitHub Actions run
+
+The initial CI and container release completed successfully, including validation and image publishing:
+
+![Successful GitHub Actions run showing validation and publish jobs](image.png)
+
 ## Docker, Nginx and HTTPS
 
 The API image uses a Node 22 slim base, a non-root user and a health check. Compose exposes the API on host loopback for local tests and keeps PostgreSQL on the internal network. The optional Nginx `proxy` profile exposes ports 80/443.
@@ -267,4 +354,4 @@ In a 3–5 minute demo: (1) show the architecture and passing CI run, (2) call `
 
 ## Security and limitations
 
-API and database container ports are not publicly bound; PostgreSQL is only on the Compose network. The API image omits development and optional dependencies. The 2026-11-13 production dependency audit (`npm audit --omit=dev --omit=optional`) found zero vulnerabilities. CI runs the full dependency audit on a best-effort basis. The full audit reports 3 high-severity package findings from one advisory: Prisma CLI 6.19.3 pulls vulnerable `deepmerge-ts` 7.1.5 through `@prisma/config`. Updating Prisma CLI and client to 6.19.3 fixes the separate `effect` advisory; resolving `deepmerge-ts` requires the breaking Prisma 7 upgrade. Jest 29.7.0 also pulls `deepmerge` 4.3.1 (low severity), and ESLint 10.14.0 pulls `minimatch` 10.2.6 (moderate severity); available fixes require major dependency changes. These findings are in development tooling, which is excluded from the production image. Reassess them before release. Local TLS is self-signed, and example passwords must be changed. No authentication, payment integration, seat pricing, partial-route allocations, production secret manager, remote cloud host or public trusted certificate is included. Seeded dates are relative to the day the seed runs.
+API and database container ports are not publicly bound; PostgreSQL is only on the Compose network. The API image omits development and optional dependencies. The 2026-11-14 production dependency audit (`npm audit --omit=dev --omit=optional`) found zero vulnerabilities. A compatible, non-forced audit update moved ESLint to 10.15.0 and its `minimatch` dependencies to 11.0.8, clearing the three moderate findings. The remaining full development audit reports 3 high and 6 low package findings. The high findings share the Prisma CLI 6.19.3 → `@prisma/config` → vulnerable `deepmerge-ts` chain; npm's available fix requires the breaking Prisma 7.10.1 upgrade. Jest 29.7.0's dependency tree also includes vulnerable `deepmerge` 4.3.1; npm only offers a breaking Jest downgrade to 25.1.0, so that change was not applied. CI runs the full audit on a best-effort basis while the production audit remains a gate. These findings are in development tooling, which is excluded from the production image. Local TLS is self-signed, and example passwords must be changed before deployment. No authentication, payment integration, seat pricing, partial-route allocations, production secret manager, remote cloud host or public trusted certificate is included. Seeded dates are relative to the day the seed runs.
