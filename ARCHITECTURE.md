@@ -195,3 +195,4 @@ Compose restart policies cover the long-running db, api, and nginx services. The
 A successful GitHub Actions run is available at [run #1](https://github.com/uday2327/AlgionsAI-Bus-tracking-route-devops-project/actions/runs/43605440309). Its validate and publish jobs succeeded for commit c7a042d. The reported GHCR image is ghcr.io/uday2327/algionsai-bus-tracking-route-devops-project with tags latest and sha-c7a042d6ce277d38e4dc1e85f132cabe8040727f; reported digest sha256:1fc477a58c02ed32e079d50a0e7f5c6b6fe8ab5219939b327be7e7a430d2d4f0.
 
 The successful CI run verifies the pipeline and its tests/build/publication for that commit. It is not proof of a local Compose deployment, public service, successful restore, or previous-image rollback. The local Docker engine was unavailable during the audit.
+final commit to chnage here 
