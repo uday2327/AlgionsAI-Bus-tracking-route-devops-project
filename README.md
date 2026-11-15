@@ -430,3 +430,4 @@ The supplied image above is a screenshot of the successful GitHub Actions run. T
 6. Capture deployment, health, logs, backup/restore, and rollback evidence only after each succeeds; record the 3–5 minute demo.
 
 See [RUNBOOK.md](RUNBOOK.md) for commands and expected results. Do not run docker compose down -v as an ordinary stop; it deletes the database volume.
+made final change commit
